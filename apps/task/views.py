@@ -3,6 +3,8 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from collections import defaultdict
+from django.utils import timezone
 
 from .models import Task
 from .serializers import TaskSerializer
@@ -65,3 +67,29 @@ class TaskDetailView(APIView):
         # Очищаем кэш при удалении задачи
         cache.delete("tasks")
         return Response({"message": "Задача удалена"}, status=status.HTTP_204_NO_CONTENT)
+    
+class GroupedTaskView(APIView):
+    def get(self, request):
+        tasks = Task.objects.exclude(
+            deadline__isnull=True
+        ).order_by("deadline")
+
+        grouped = defaultdict(list)
+
+        for task in tasks:
+            date_key = timezone.localtime(
+                task.deadline
+            ).date().isoformat()
+
+            grouped[date_key].append(task)
+
+        result = {
+            date: TaskSerializer(
+                items,
+                many=True,
+                context={"request": request},
+            ).data
+            for date, items in grouped.items()
+        }
+
+        return Response(result)
